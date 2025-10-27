@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { LogOut, Menu, X, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -10,7 +11,6 @@ interface NavigationProps {
   userRole: string;
   onLogout: () => void;
   canManageUsers: boolean;
-  onAdminClick: () => void;
 }
 
 export const Navigation = ({ 
@@ -20,10 +20,10 @@ export const Navigation = ({
   userName,
   userRole,
   onLogout,
-  canManageUsers,
-  onAdminClick
+  canManageUsers
 }: NavigationProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <nav className="bg-gradient-to-r from-primary via-primary/90 to-accent text-primary-foreground shadow-lg">
@@ -51,7 +51,7 @@ export const Navigation = ({
               Inventory
             </Button>
             {canManageUsers && (
-              <Button variant="ghost" size="icon" onClick={onAdminClick}>
+              <Button variant="ghost" size="icon" onClick={() => navigate('/admin')}>
                 <Settings size={20} />
               </Button>
             )}
@@ -93,7 +93,7 @@ export const Navigation = ({
               Inventory
             </Button>
             {canManageUsers && (
-              <Button variant="ghost" onClick={() => { onAdminClick(); setMobileMenuOpen(false); }} className="w-full">
+              <Button variant="ghost" onClick={() => { navigate('/admin'); setMobileMenuOpen(false); }} className="w-full">
                 <Settings size={18} className="mr-2" />
                 Admin Panel
               </Button>

@@ -17,7 +17,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { AdminPanelDialog } from '@/components/logistics/AdminPanelDialog';
 
 export default function Index() {
   const { user, userRole, signOut } = useAuth();
@@ -31,7 +30,6 @@ export default function Index() {
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [activityLog, setActivityLog] = useState<ActivityLog[]>([]);
-  const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -250,7 +248,6 @@ export default function Index() {
         userRole={userRoles[currentUserRole]?.name || 'User'}
         onLogout={signOut}
         canManageUsers={canManageUsers}
-        onAdminClick={() => setShowAdminPanel(true)}
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -267,11 +264,11 @@ export default function Index() {
           </div>
           {canManageUsers && (
             <Button
-              onClick={() => setShowAdminPanel(true)}
+              onClick={() => navigate('/admin')}
               className="hidden md:flex items-center gap-2"
             >
               <Settings size={18} />
-              Manage Access
+              Admin Panel
             </Button>
           )}
         </div>
@@ -565,8 +562,6 @@ export default function Index() {
           </form>
         </DialogContent>
       </Dialog>
-
-      <AdminPanelDialog open={showAdminPanel} onOpenChange={setShowAdminPanel} />
 
       <footer className="bg-card border-t border-border mt-12 py-6">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
