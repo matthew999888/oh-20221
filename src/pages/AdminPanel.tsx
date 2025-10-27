@@ -46,25 +46,33 @@ export default function AdminPanel() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // Fetch profiles first
+      const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
-        .select(`
-          id,
-          email,
-          name,
-          created_at,
-          user_roles (role)
-        `)
+        .select('id, email, name, created_at')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (profilesError) throw profilesError;
 
-      const usersWithRoles = data?.map(user => ({
+      // Fetch all user roles
+      const { data: rolesData, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('user_id, role');
+
+      if (rolesError) throw rolesError;
+
+      // Create a map of user_id to role for quick lookup
+      const roleMap = new Map(
+        rolesData?.map(r => [r.user_id, r.role]) || []
+      );
+
+      // Combine the data
+      const usersWithRoles = profilesData?.map(user => ({
         id: user.id,
         email: user.email,
         name: user.name,
         created_at: user.created_at,
-        role: (user.user_roles as any)?.[0]?.role || 'cadet'
+        role: roleMap.get(user.id) || 'cadet'
       })) || [];
 
       setUsers(usersWithRoles);
