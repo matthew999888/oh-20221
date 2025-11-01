@@ -4,6 +4,7 @@ import { Package, Users, AlertCircle, Plus, Search, Trash2, Settings } from 'luc
 import { Item, ActivityLog } from '@/types/logistics';
 import { categories } from '@/data/categories';
 import { userRoles } from '@/data/userRoles';
+import { itemSchema, checkoutSchema } from '@/lib/validations';
 import { Navigation } from '@/components/logistics/Navigation';
 import { StatsCard } from '@/components/logistics/StatsCard';
 import { CategoryCard } from '@/components/logistics/CategoryCard';
@@ -95,19 +96,31 @@ export default function Index() {
     if (!user) return;
 
     const formData = new FormData(e.currentTarget);
-    const newItem = {
+    const rawData = {
       category: formData.get('category') as string,
       name: formData.get('name') as string,
       quantity: parseInt(formData.get('quantity') as string),
-      in_use: 0,
-      assigned_to: null,
       condition: formData.get('condition') as string,
       location: formData.get('location') as string,
-      notes: formData.get('notes') as string || '',
-      created_by: user.id
+      notes: (formData.get('notes') as string) || '',
     };
 
     try {
+      // Validate input data
+      const validatedData = itemSchema.parse(rawData);
+      
+      const newItem = {
+        category: validatedData.category,
+        name: validatedData.name,
+        quantity: validatedData.quantity,
+        condition: validatedData.condition,
+        location: validatedData.location,
+        notes: validatedData.notes || '',
+        in_use: 0,
+        assigned_to: null,
+        created_by: user.id
+      };
+
       const { data, error } = await supabase
         .from('items')
         .insert(newItem)
@@ -121,7 +134,11 @@ export default function Index() {
       fetchItems();
       addActivity('Added item', newItem.name, data.id);
     } catch (error: any) {
-      toast.error('Error adding item: ' + error.message);
+      if (error.name === 'ZodError') {
+        toast.error(error.errors[0].message);
+      } else {
+        toast.error('Error adding item: ' + error.message);
+      }
     }
   };
 
@@ -129,21 +146,35 @@ export default function Index() {
     e.preventDefault();
     if (!selectedItem) return;
 
+    // Check permission
+    if (!canCheckout) {
+      toast.error('You do not have permission to check out items');
+      return;
+    }
+
     const formData = new FormData(e.currentTarget);
-    const cadetName = formData.get('cadetName') as string;
-    const dueDate = formData.get('dueDate') as string;
+    const rawData = {
+      cadetName: formData.get('cadetName') as string,
+      dueDate: formData.get('dueDate') as string,
+    };
 
     try {
+      // Validate input data
+      const validatedData = checkoutSchema.parse(rawData);
+
       const { error } = await supabase
         .from('items')
         .update({
           in_use: selectedItem.in_use + 1,
-          assigned_to: cadetName,
-          due_date: dueDate
+          assigned_to: validatedData.cadetName,
+          due_date: validatedData.dueDate
         })
         .eq('id', selectedItem.id);
 
-      if (error) throw error;
+      if (error) {
+        toast.error('Permission denied or error: ' + error.message);
+        return;
+      }
 
       toast.success('Item checked out successfully!');
       setShowCheckoutModal(false);
@@ -177,6 +208,12 @@ export default function Index() {
   };
 
   const handleDeleteItem = async (item: Item) => {
+    // Check permission first
+    if (!canDelete) {
+      toast.error('You do not have permission to delete items');
+      return;
+    }
+
     if (!confirm(`Are you sure you want to delete "${item.name}"? This action cannot be undone.`)) {
       return;
     }
@@ -187,11 +224,14 @@ export default function Index() {
         .delete()
         .eq('id', item.id);
 
-      if (error) throw error;
+      if (error) {
+        toast.error('Permission denied or error: ' + error.message);
+        return;
+      }
 
       toast.success('Item deleted successfully!');
       fetchItems();
-      addActivity('Deleted item', item.name);
+      addActivity('Deleted item', item.name, item.id);
     } catch (error: any) {
       toast.error('Error deleting item: ' + error.message);
     }
