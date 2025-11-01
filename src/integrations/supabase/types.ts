@@ -79,10 +79,101 @@ export type Database = {
         }
         Relationships: []
       }
+      checkout_log: {
+        Row: {
+          cadet_name: string
+          checkin_date: string | null
+          checkout_date: string
+          created_at: string
+          created_by: string | null
+          id: string
+          item_id: string | null
+          item_name: string
+          quantity: number
+          status: string
+        }
+        Insert: {
+          cadet_name: string
+          checkin_date?: string | null
+          checkout_date?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          item_id?: string | null
+          item_name: string
+          quantity?: number
+          status?: string
+        }
+        Update: {
+          cadet_name?: string
+          checkin_date?: string | null
+          checkout_date?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          item_id?: string | null
+          item_name?: string
+          quantity?: number
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checkout_log_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_changes: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          changed_by_name: string
+          id: string
+          item_id: string | null
+          item_name: string
+          new_quantity: number
+          old_quantity: number
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          changed_by_name: string
+          id?: string
+          item_id?: string | null
+          item_name: string
+          new_quantity: number
+          old_quantity: number
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          changed_by_name?: string
+          id?: string
+          item_id?: string | null
+          item_name?: string
+          new_quantity?: number
+          old_quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_changes_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       items: {
         Row: {
           assigned_to: string | null
           category: string
+          checked_out_by: string | null
+          checkout_date: string | null
+          checkout_status: string | null
           condition: string
           created_at: string
           created_by: string | null
@@ -98,6 +189,9 @@ export type Database = {
         Insert: {
           assigned_to?: string | null
           category: string
+          checked_out_by?: string | null
+          checkout_date?: string | null
+          checkout_status?: string | null
           condition?: string
           created_at?: string
           created_by?: string | null
@@ -113,6 +207,9 @@ export type Database = {
         Update: {
           assigned_to?: string | null
           category?: string
+          checked_out_by?: string | null
+          checkout_date?: string | null
+          checkout_status?: string | null
           condition?: string
           created_at?: string
           created_by?: string | null
@@ -188,7 +285,7 @@ export type Database = {
       is_admin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      app_role: "admin" | "logistics" | "cadet"
+      app_role: "admin" | "logistics" | "cadet" | "lead" | "staff" | "member"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -316,7 +413,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "logistics", "cadet"],
+      app_role: ["admin", "logistics", "cadet", "lead", "staff", "member"],
     },
   },
 } as const

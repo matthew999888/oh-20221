@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Package, Users, AlertCircle, Plus, Search, Trash2, Settings } from 'lucide-react';
+import { Package, Users, AlertCircle, Plus, Search, Trash2, Settings, History, LogOut, LogIn } from 'lucide-react';
 import { Item, ActivityLog } from '@/types/logistics';
 import { categories } from '@/data/categories';
 import { userRoles } from '@/data/userRoles';
@@ -9,6 +9,9 @@ import { Navigation } from '@/components/logistics/Navigation';
 import { StatsCard } from '@/components/logistics/StatsCard';
 import { CategoryCard } from '@/components/logistics/CategoryCard';
 import { ActivityLogItem } from '@/components/logistics/ActivityLogItem';
+import { QuantityEditor } from '@/components/logistics/QuantityEditor';
+import { CheckoutDialog } from '@/components/logistics/CheckoutDialog';
+import { CheckoutHistoryDialog } from '@/components/logistics/CheckoutHistoryDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -29,6 +32,8 @@ export default function Index() {
   const [filterCondition, setFilterCondition] = useState<string>('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [showCheckoutDialog, setShowCheckoutDialog] = useState(false);
+  const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [activityLog, setActivityLog] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -237,6 +242,122 @@ export default function Index() {
     }
   };
 
+  const handleUpdateQuantity = async (item: Item, newQuantity: number) => {
+    if (!user) return;
+
+    try {
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('name')
+        .eq('id', user.id)
+        .single();
+
+      const userName = profileData?.name || user.email || 'Unknown';
+
+      // Log the change
+      await supabase.from('inventory_changes').insert({
+        item_id: item.id,
+        item_name: item.name,
+        old_quantity: item.quantity,
+        new_quantity: newQuantity,
+        changed_by: user.id,
+        changed_by_name: userName
+      });
+
+      // Update the item
+      const { error } = await supabase
+        .from('items')
+        .update({ quantity: newQuantity })
+        .eq('id', item.id);
+
+      if (error) throw error;
+
+      toast.success('Quantity updated successfully!');
+      fetchItems();
+      addActivity(`Updated quantity from ${item.quantity} to ${newQuantity}`, item.name, item.id);
+    } catch (error: any) {
+      toast.error('Error updating quantity: ' + error.message);
+      throw error;
+    }
+  };
+
+  const handleNewCheckout = async (cadetName: string) => {
+    if (!selectedItem || !user) return;
+
+    try {
+      // Update item
+      await supabase
+        .from('items')
+        .update({
+          checked_out_by: cadetName,
+          checkout_date: new Date().toISOString(),
+          checkout_status: 'out'
+        })
+        .eq('id', selectedItem.id);
+
+      // Log checkout
+      await supabase.from('checkout_log').insert({
+        cadet_name: cadetName,
+        item_id: selectedItem.id,
+        item_name: selectedItem.name,
+        quantity: 1,
+        status: 'out',
+        created_by: user.id
+      });
+
+      toast.success(`Item checked out to ${cadetName}`);
+      fetchItems();
+      addActivity(`Checked out to ${cadetName}`, selectedItem.name, selectedItem.id);
+    } catch (error: any) {
+      toast.error('Error checking out item: ' + error.message);
+      throw error;
+    }
+  };
+
+  const handleNewCheckin = async () => {
+    if (!selectedItem || !user) return;
+
+    try {
+      // Get the checkout log entry
+      const { data: checkoutLog } = await supabase
+        .from('checkout_log')
+        .select('*')
+        .eq('item_id', selectedItem.id)
+        .eq('status', 'out')
+        .order('checkout_date', { ascending: false })
+        .limit(1)
+        .single();
+
+      // Update checkout log
+      if (checkoutLog) {
+        await supabase
+          .from('checkout_log')
+          .update({
+            checkin_date: new Date().toISOString(),
+            status: 'returned'
+          })
+          .eq('id', checkoutLog.id);
+      }
+
+      // Update item
+      await supabase
+        .from('items')
+        .update({
+          checked_out_by: null,
+          checkout_date: null,
+          checkout_status: 'available'
+        })
+        .eq('id', selectedItem.id);
+
+      toast.success('Item checked in successfully');
+      fetchItems();
+      addActivity('Checked in', selectedItem.name, selectedItem.id);
+    } catch (error: any) {
+      toast.error('Error checking in item: ' + error.message);
+      throw error;
+    }
+  };
+
   const filteredItems = items.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          item.assigned_to?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -430,8 +551,8 @@ export default function Index() {
                       <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Item</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Category</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Quantity</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">In Use</th>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Assigned To</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Checked Out To</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Status</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Condition</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Location</th>
                       <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">Actions</th>
@@ -449,9 +570,21 @@ export default function Index() {
                         <td className="px-4 py-3 text-sm text-muted-foreground">
                           {categories.find(c => c.id === item.category)?.icon}
                         </td>
-                        <td className="px-4 py-3 text-sm text-foreground font-medium">{item.quantity}</td>
-                        <td className="px-4 py-3 text-sm text-foreground">{item.in_use}</td>
-                        <td className="px-4 py-3 text-sm text-muted-foreground">{item.assigned_to || '-'}</td>
+                        <td className="px-4 py-3">
+                          <QuantityEditor 
+                            item={item} 
+                            onSave={(newQty) => handleUpdateQuantity(item, newQty)}
+                            canEdit={canEdit}
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-sm text-muted-foreground">{item.checked_out_by || '-'}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {item.checkout_status === 'out' ? (
+                            <span className="text-destructive font-medium">Checked Out</span>
+                          ) : (
+                            <span className="text-green-600 font-medium">Available</span>
+                          )}
+                        </td>
                         <td className="px-4 py-3">
                           <span className={`text-xs px-2 py-1 rounded-full border ${getConditionColor(item.condition)}`}>
                             {item.condition.replace('-', ' ').toUpperCase()}
@@ -459,32 +592,17 @@ export default function Index() {
                         </td>
                         <td className="px-4 py-3 text-sm text-muted-foreground">{item.location}</td>
                         <td className="px-4 py-3">
-                          <div className="flex gap-2">
-                            {canCheckout && item.in_use < item.quantity && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => { setSelectedItem(item); setShowCheckoutModal(true); }}
-                              >
-                                Check Out
+                          <div className="flex gap-1">
+                            {canCheckout && (
+                              <Button variant="ghost" size="sm" onClick={() => { setSelectedItem(item); setShowCheckoutDialog(true); }}>
+                                {item.checkout_status === 'out' ? <LogIn size={16} /> : <LogOut size={16} />}
                               </Button>
                             )}
-                            {item.in_use > 0 && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleCheckin(item)}
-                              >
-                                Check In
-                              </Button>
-                            )}
+                            <Button variant="ghost" size="sm" onClick={() => { setSelectedItem(item); setShowHistoryDialog(true); }}>
+                              <History size={16} />
+                            </Button>
                             {canDelete && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDeleteItem(item)}
-                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                              >
+                              <Button variant="ghost" size="sm" onClick={() => handleDeleteItem(item)} className="text-destructive">
                                 <Trash2 size={16} />
                               </Button>
                             )}
@@ -602,6 +720,21 @@ export default function Index() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <CheckoutDialog
+        item={selectedItem}
+        open={showCheckoutDialog}
+        onOpenChange={setShowCheckoutDialog}
+        onCheckout={handleNewCheckout}
+        onCheckin={handleNewCheckin}
+      />
+
+      <CheckoutHistoryDialog
+        itemId={selectedItem?.id || null}
+        itemName={selectedItem?.name || ''}
+        open={showHistoryDialog}
+        onOpenChange={setShowHistoryDialog}
+      />
 
       <footer className="bg-card border-t border-border mt-12 py-6">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">

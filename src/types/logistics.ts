@@ -12,6 +12,9 @@ export interface Item {
   created_at: string;
   updated_at: string;
   created_by?: string | null;
+  checked_out_by?: string | null;
+  checkout_date?: string | null;
+  checkout_status?: string;
 }
 
 export interface Category {
@@ -22,7 +25,7 @@ export interface Category {
 
 export interface User {
   name: string;
-  role: 'admin' | 'logistics' | 'cadet';
+  role: 'admin' | 'lead' | 'staff' | 'member' | 'logistics' | 'cadet';
   email: string;
 }
 
@@ -47,8 +50,32 @@ export interface ActivityLog {
 export interface AllowedEmail {
   id: string;
   email: string;
-  role: 'admin' | 'logistics' | 'cadet';
+  role: 'admin' | 'lead' | 'staff' | 'member' | 'logistics' | 'cadet';
   name: string;
   created_at: string;
   created_by?: string | null;
+}
+
+export interface CheckoutLog {
+  id: string;
+  cadet_name: string;
+  item_id: string | null;
+  item_name: string;
+  quantity: number;
+  checkout_date: string;
+  checkin_date?: string | null;
+  status: string;
+  created_by?: string | null;
+  created_at: string;
+}
+
+export interface InventoryChange {
+  id: string;
+  item_id: string | null;
+  item_name: string;
+  old_quantity: number;
+  new_quantity: number;
+  changed_by?: string | null;
+  changed_by_name: string;
+  changed_at: string;
 }

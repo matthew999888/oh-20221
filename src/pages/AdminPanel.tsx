@@ -16,7 +16,7 @@ interface UserWithRole {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'logistics' | 'cadet';
+  role: 'admin' | 'lead' | 'staff' | 'member' | 'logistics' | 'cadet';
   created_at: string;
 }
 
@@ -26,12 +26,12 @@ export default function AdminPanel() {
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'logistics' | 'cadet'>('all');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'lead' | 'staff' | 'member' | 'logistics' | 'cadet'>('all');
   const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
 
   useEffect(() => {
-    // Redirect non-admins
+    // Redirect non-admins (only admins can access this page)
     if (userRole && userRole !== 'admin') {
       toast.error('Access denied: Admin privileges required');
       navigate('/');
@@ -83,7 +83,7 @@ export default function AdminPanel() {
     }
   };
 
-  const handleRoleChange = async (userId: string, newRole: 'admin' | 'logistics' | 'cadet') => {
+  const handleRoleChange = async (userId: string, newRole: 'admin' | 'lead' | 'staff' | 'member' | 'logistics' | 'cadet') => {
     try {
       const { error } = await supabase
         .from('user_roles')
@@ -111,7 +111,10 @@ export default function AdminPanel() {
 
   const getRoleLabel = (role: string) => {
     const labels = {
-      admin: 'Admin (Instructor)',
+      admin: 'Admin',
+      lead: 'Lead',
+      staff: 'Staff',
+      member: 'Member',
       logistics: 'Logistics Officer',
       cadet: 'Cadet User'
     };
@@ -121,6 +124,9 @@ export default function AdminPanel() {
   const getRoleBadgeVariant = (role: string): "default" | "destructive" | "secondary" => {
     const variants = {
       admin: 'destructive' as const,
+      lead: 'destructive' as const,
+      staff: 'default' as const,
+      member: 'secondary' as const,
       logistics: 'default' as const,
       cadet: 'secondary' as const
     };
@@ -130,6 +136,9 @@ export default function AdminPanel() {
   const getRoleIcon = (role: string) => {
     const icons = {
       admin: Shield,
+      lead: Shield,
+      staff: UserCog,
+      member: UserCheck,
       logistics: UserCog,
       cadet: UserCheck
     };
@@ -140,9 +149,12 @@ export default function AdminPanel() {
   const getStats = () => {
     const totalUsers = users.length;
     const admins = users.filter(u => u.role === 'admin').length;
+    const leads = users.filter(u => u.role === 'lead').length;
+    const staff = users.filter(u => u.role === 'staff').length;
+    const members = users.filter(u => u.role === 'member').length;
     const logistics = users.filter(u => u.role === 'logistics').length;
     const cadets = users.filter(u => u.role === 'cadet').length;
-    return { totalUsers, admins, logistics, cadets };
+    return { totalUsers, admins, leads, staff, members, logistics, cadets };
   };
 
   const stats = getStats();
@@ -187,7 +199,7 @@ export default function AdminPanel() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Total Users</CardDescription>
@@ -208,7 +220,34 @@ export default function AdminPanel() {
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardDescription>Logistics Officers</CardDescription>
+              <CardDescription>Leads</CardDescription>
+              <CardTitle className="text-3xl flex items-center gap-2">
+                <Shield size={24} className="text-destructive" />
+                {stats.leads}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Staff</CardDescription>
+              <CardTitle className="text-3xl flex items-center gap-2">
+                <UserCog size={24} className="text-primary" />
+                {stats.staff}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Members</CardDescription>
+              <CardTitle className="text-3xl flex items-center gap-2">
+                <UserCheck size={24} className="text-muted-foreground" />
+                {stats.members}
+              </CardTitle>
+            </CardHeader>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardDescription>Logistics</CardDescription>
               <CardTitle className="text-3xl flex items-center gap-2">
                 <UserCog size={24} className="text-primary" />
                 {stats.logistics}
@@ -252,9 +291,12 @@ export default function AdminPanel() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Roles</SelectItem>
-                    <SelectItem value="admin">Admins Only</SelectItem>
-                    <SelectItem value="logistics">Logistics Only</SelectItem>
-                    <SelectItem value="cadet">Cadets Only</SelectItem>
+                    <SelectItem value="admin">Admins</SelectItem>
+                    <SelectItem value="lead">Leads</SelectItem>
+                    <SelectItem value="staff">Staff</SelectItem>
+                    <SelectItem value="member">Members</SelectItem>
+                    <SelectItem value="logistics">Logistics Officers</SelectItem>
+                    <SelectItem value="cadet">Cadets</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -340,12 +382,30 @@ export default function AdminPanel() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="member">
+                      <div className="flex items-center gap-2">
+                        <UserCheck size={16} />
+                        <div>
+                          <p className="font-medium">Member</p>
+                          <p className="text-xs text-muted-foreground">View-only access</p>
+                        </div>
+                      </div>
+                    </SelectItem>
                     <SelectItem value="cadet">
                       <div className="flex items-center gap-2">
                         <UserCheck size={16} />
                         <div>
-                          <p className="font-medium">Cadet User</p>
-                          <p className="text-xs text-muted-foreground">View-only access</p>
+                          <p className="font-medium">Cadet</p>
+                          <p className="text-xs text-muted-foreground">View-only access (legacy)</p>
+                        </div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="staff">
+                      <div className="flex items-center gap-2">
+                        <UserCog size={16} />
+                        <div>
+                          <p className="font-medium">Staff</p>
+                          <p className="text-xs text-muted-foreground">Can add and edit inventory</p>
                         </div>
                       </div>
                     </SelectItem>
@@ -354,7 +414,16 @@ export default function AdminPanel() {
                         <UserCog size={16} />
                         <div>
                           <p className="font-medium">Logistics Officer</p>
-                          <p className="text-xs text-muted-foreground">Can manage inventory</p>
+                          <p className="text-xs text-muted-foreground">Can add and edit inventory (legacy)</p>
+                        </div>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="lead">
+                      <div className="flex items-center gap-2">
+                        <Shield size={16} />
+                        <div>
+                          <p className="font-medium">Lead</p>
+                          <p className="text-xs text-muted-foreground">Full inventory access, no role management</p>
                         </div>
                       </div>
                     </SelectItem>
@@ -362,8 +431,8 @@ export default function AdminPanel() {
                       <div className="flex items-center gap-2">
                         <Shield size={16} />
                         <div>
-                          <p className="font-medium">Admin (Instructor)</p>
-                          <p className="text-xs text-muted-foreground">Full access to all features</p>
+                          <p className="font-medium">Admin</p>
+                          <p className="text-xs text-muted-foreground">Full access including role management</p>
                         </div>
                       </div>
                     </SelectItem>
