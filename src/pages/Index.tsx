@@ -11,6 +11,7 @@ import { CategoryCard } from '@/components/logistics/CategoryCard';
 import { ActivityLogItem } from '@/components/logistics/ActivityLogItem';
 import { QuantityEditor } from '@/components/logistics/QuantityEditor';
 import { CheckoutDialog } from '@/components/logistics/CheckoutDialog';
+import { CheckinDialog } from '@/components/logistics/CheckinDialog';
 import { CheckoutHistoryDialog } from '@/components/logistics/CheckoutHistoryDialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,8 +34,10 @@ export default function Index() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false);
+  const [showCheckinDialog, setShowCheckinDialog] = useState(false);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+  const [activeCheckouts, setActiveCheckouts] = useState<Array<{ id: string; cadet_name: string; quantity: number; checkout_date: string }>>([]);
   const [activityLog, setActivityLog] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -281,81 +284,119 @@ export default function Index() {
     }
   };
 
-  const handleNewCheckout = async (cadetName: string) => {
+  const handleNewCheckout = async (cadetName: string, quantity: number) => {
     if (!selectedItem || !user) return;
 
     try {
-      // Update item
-      await supabase
-        .from('items')
-        .update({
-          checked_out_by: cadetName,
-          checkout_date: new Date().toISOString(),
-          checkout_status: 'out'
-        })
-        .eq('id', selectedItem.id);
+      // Calculate current checkouts
+      const { data: currentCheckouts } = await supabase
+        .from('checkout_log')
+        .select('quantity')
+        .eq('item_id', selectedItem.id)
+        .eq('status', 'out');
+
+      const totalCheckedOut = currentCheckouts?.reduce((sum, c) => sum + c.quantity, 0) || 0;
+      const available = selectedItem.quantity - totalCheckedOut;
+
+      if (quantity > available) {
+        toast.error(`Only ${available} items available`);
+        return;
+      }
 
       // Log checkout
       await supabase.from('checkout_log').insert({
         cadet_name: cadetName,
         item_id: selectedItem.id,
         item_name: selectedItem.name,
-        quantity: 1,
+        quantity: quantity,
         status: 'out',
         created_by: user.id
       });
 
-      toast.success(`Item checked out to ${cadetName}`);
+      // Update item's in_use count
+      await supabase
+        .from('items')
+        .update({
+          in_use: totalCheckedOut + quantity
+        })
+        .eq('id', selectedItem.id);
+
+      toast.success(`Checked out ${quantity}x ${selectedItem.name} to ${cadetName}`);
       fetchItems();
-      addActivity(`Checked out to ${cadetName}`, selectedItem.name, selectedItem.id);
+      addActivity(`Checked out ${quantity}x to ${cadetName}`, selectedItem.name, selectedItem.id);
     } catch (error: any) {
       toast.error('Error checking out item: ' + error.message);
       throw error;
     }
   };
 
-  const handleNewCheckin = async () => {
+  const handleNewCheckin = async (checkoutId: string) => {
     if (!selectedItem || !user) return;
 
     try {
-      // Get the checkout log entry
-      const { data: checkoutLog } = await supabase
+      // Get the checkout record
+      const { data: checkout, error: fetchError } = await supabase
         .from('checkout_log')
-        .select('*')
-        .eq('item_id', selectedItem.id)
-        .eq('status', 'out')
-        .order('checkout_date', { ascending: false })
-        .limit(1)
+        .select('quantity')
+        .eq('id', checkoutId)
         .single();
 
-      // Update checkout log
-      if (checkoutLog) {
-        await supabase
-          .from('checkout_log')
-          .update({
-            checkin_date: new Date().toISOString(),
-            status: 'returned'
-          })
-          .eq('id', checkoutLog.id);
-      }
+      if (fetchError) throw fetchError;
 
-      // Update item
+      // Update checkout log
+      await supabase
+        .from('checkout_log')
+        .update({
+          checkin_date: new Date().toISOString(),
+          status: 'returned'
+        })
+        .eq('id', checkoutId);
+
+      // Update item's in_use count
       await supabase
         .from('items')
         .update({
-          checked_out_by: null,
-          checkout_date: null,
-          checkout_status: 'available'
+          in_use: Math.max(0, selectedItem.in_use - checkout.quantity)
         })
         .eq('id', selectedItem.id);
 
-      toast.success('Item checked in successfully');
+      toast.success(`Checked in ${checkout.quantity}x ${selectedItem.name}`);
       fetchItems();
-      addActivity('Checked in', selectedItem.name, selectedItem.id);
+      addActivity(`Checked in ${checkout.quantity}x`, selectedItem.name, selectedItem.id);
     } catch (error: any) {
       toast.error('Error checking in item: ' + error.message);
       throw error;
     }
+  };
+
+  const handleCheckoutButtonClick = async (item: Item) => {
+    setSelectedItem(item);
+    
+    // Fetch active checkouts
+    const { data: checkouts } = await supabase
+      .from('checkout_log')
+      .select('id, cadet_name, quantity, checkout_date')
+      .eq('item_id', item.id)
+      .eq('status', 'out')
+      .order('checkout_date', { ascending: false });
+    
+    setActiveCheckouts(checkouts || []);
+    setShowCheckoutDialog(true);
+  };
+
+  const handleCheckinButtonClick = async (item: Item) => {
+    setSelectedItem(item);
+    
+    // Fetch active checkouts
+    const { data: checkouts } = await supabase
+      .from('checkout_log')
+      .select('id, cadet_name, quantity, checkout_date')
+      .eq('item_id', item.id)
+      .eq('status', 'out')
+      .order('checkout_date', { ascending: false });
+    
+    setActiveCheckouts(checkouts || []);
+    setShowCheckinDialog(true);
   };
 
   const filteredItems = items.filter(item => {
@@ -577,37 +618,48 @@ export default function Index() {
                             canEdit={canEdit}
                           />
                         </td>
-                        <td className="px-4 py-3 text-sm text-muted-foreground">{item.checked_out_by || '-'}</td>
-                        <td className="px-4 py-3 text-sm">
-                          {item.checkout_status === 'out' ? (
-                            <span className="text-destructive font-medium">Checked Out</span>
-                          ) : (
-                            <span className="text-green-600 font-medium">Available</span>
-                          )}
-                        </td>
+                         <td className="px-4 py-3 text-sm text-muted-foreground">
+                           {item.in_use > 0 ? `${item.in_use} cadets` : '-'}
+                         </td>
+                         <td className="px-4 py-3 text-sm">
+                           {item.in_use > 0 ? (
+                             <span className="text-destructive font-medium">
+                               {item.in_use} Checked Out
+                             </span>
+                           ) : (
+                             <span className="text-green-600 font-medium">Available</span>
+                           )}
+                         </td>
                         <td className="px-4 py-3">
                           <span className={`text-xs px-2 py-1 rounded-full border ${getConditionColor(item.condition)}`}>
                             {item.condition.replace('-', ' ').toUpperCase()}
                           </span>
                         </td>
                         <td className="px-4 py-3 text-sm text-muted-foreground">{item.location}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex gap-1">
-                            {canCheckout && (
-                              <Button variant="ghost" size="sm" onClick={() => { setSelectedItem(item); setShowCheckoutDialog(true); }}>
-                                {item.checkout_status === 'out' ? <LogIn size={16} /> : <LogOut size={16} />}
-                              </Button>
-                            )}
-                            <Button variant="ghost" size="sm" onClick={() => { setSelectedItem(item); setShowHistoryDialog(true); }}>
-                              <History size={16} />
-                            </Button>
-                            {canDelete && (
-                              <Button variant="ghost" size="sm" onClick={() => handleDeleteItem(item)} className="text-destructive">
-                                <Trash2 size={16} />
-                              </Button>
-                            )}
-                          </div>
-                        </td>
+                         <td className="px-4 py-3">
+                           <div className="flex gap-1">
+                             {canCheckout && (
+                               <>
+                                 <Button variant="ghost" size="sm" onClick={() => handleCheckoutButtonClick(item)} title="Check Out">
+                                   <LogOut size={16} />
+                                 </Button>
+                                 {item.in_use > 0 && (
+                                   <Button variant="ghost" size="sm" onClick={() => handleCheckinButtonClick(item)} title="Check In">
+                                     <LogIn size={16} />
+                                   </Button>
+                                 )}
+                               </>
+                             )}
+                             <Button variant="ghost" size="sm" onClick={() => { setSelectedItem(item); setShowHistoryDialog(true); }}>
+                               <History size={16} />
+                             </Button>
+                             {canDelete && (
+                               <Button variant="ghost" size="sm" onClick={() => handleDeleteItem(item)} className="text-destructive">
+                                 <Trash2 size={16} />
+                               </Button>
+                             )}
+                           </div>
+                         </td>
                       </tr>
                     ))}
                   </tbody>
@@ -726,7 +778,15 @@ export default function Index() {
         open={showCheckoutDialog}
         onOpenChange={setShowCheckoutDialog}
         onCheckout={handleNewCheckout}
+        activeCheckouts={activeCheckouts}
+      />
+
+      <CheckinDialog
+        item={selectedItem}
+        open={showCheckinDialog}
+        onOpenChange={setShowCheckinDialog}
         onCheckin={handleNewCheckin}
+        activeCheckouts={activeCheckouts}
       />
 
       <CheckoutHistoryDialog

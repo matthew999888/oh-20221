@@ -10,35 +10,28 @@ interface CheckoutDialogProps {
   item: Item | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCheckout: (cadetName: string) => Promise<void>;
-  onCheckin: () => Promise<void>;
+  onCheckout: (cadetName: string, quantity: number) => Promise<void>;
+  activeCheckouts?: Array<{ id: string; cadet_name: string; quantity: number; checkout_date: string }>;
 }
 
-export function CheckoutDialog({ item, open, onOpenChange, onCheckout, onCheckin }: CheckoutDialogProps) {
+export function CheckoutDialog({ item, open, onOpenChange, onCheckout, activeCheckouts = [] }: CheckoutDialogProps) {
   const [cadetName, setCadetName] = useState('');
+  const [quantity, setQuantity] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
 
   if (!item) return null;
 
-  const isCheckedOut = item.checkout_status === 'out' && item.checked_out_by;
+  const totalCheckedOut = activeCheckouts.reduce((sum, checkout) => sum + checkout.quantity, 0);
+  const availableQuantity = item.quantity - totalCheckedOut;
 
   const handleCheckout = async () => {
-    if (!cadetName.trim()) return;
+    if (!cadetName.trim() || quantity < 1 || quantity > availableQuantity) return;
     
     setIsLoading(true);
     try {
-      await onCheckout(cadetName);
+      await onCheckout(cadetName, quantity);
       setCadetName('');
-      onOpenChange(false);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleCheckin = async () => {
-    setIsLoading(true);
-    try {
-      await onCheckin();
+      setQuantity(1);
       onOpenChange(false);
     } finally {
       setIsLoading(false);
@@ -49,14 +42,9 @@ export function CheckoutDialog({ item, open, onOpenChange, onCheckout, onCheckin
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>
-            {isCheckedOut ? 'Check In Item' : 'Check Out Item'}
-          </DialogTitle>
+          <DialogTitle>Check Out Item</DialogTitle>
           <DialogDescription>
-            {isCheckedOut 
-              ? `Return "${item.name}" to available inventory`
-              : `Assign "${item.name}" to a cadet`
-            }
+            Assign "{item.name}" to a cadet
           </DialogDescription>
         </DialogHeader>
 
@@ -64,67 +52,80 @@ export function CheckoutDialog({ item, open, onOpenChange, onCheckout, onCheckin
           <div className="p-3 bg-accent/50 rounded-lg">
             <p className="font-medium">{item.name}</p>
             <p className="text-sm text-muted-foreground">{item.category}</p>
-            <p className="text-sm text-muted-foreground">Available: {item.quantity - item.in_use}</p>
+            <p className="text-sm text-muted-foreground">
+              Total: {item.quantity} | Available: {availableQuantity}
+            </p>
           </div>
 
-          {isCheckedOut ? (
-            <div className="space-y-4">
-              <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-                <p className="text-sm font-medium">Currently checked out to:</p>
-                <p className="text-lg font-semibold text-destructive">{item.checked_out_by}</p>
-                {item.checkout_date && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Since: {new Date(item.checkout_date).toLocaleDateString()}
-                  </p>
-                )}
-              </div>
-              
-              <Button
-                onClick={handleCheckin}
-                disabled={isLoading}
-                className="w-full"
-                variant="default"
-              >
-                <CheckCircle className="mr-2" size={16} />
-                Check In Item
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="cadetName">Cadet Name</Label>
-                <Input
-                  id="cadetName"
-                  placeholder="Enter cadet name..."
-                  value={cadetName}
-                  onChange={(e) => setCadetName(e.target.value)}
-                  className="mt-2"
-                  disabled={isLoading}
-                  maxLength={100}
-                />
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleCheckout}
-                  disabled={isLoading || !cadetName.trim()}
-                  className="flex-1"
-                  variant="default"
-                >
-                  <XCircle className="mr-2" size={16} />
-                  Check Out
-                </Button>
-                <Button
-                  onClick={() => onOpenChange(false)}
-                  disabled={isLoading}
-                  variant="outline"
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
+          {activeCheckouts.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Currently Checked Out:</p>
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {activeCheckouts.map((checkout) => (
+                  <div key={checkout.id} className="p-2 bg-muted/50 rounded text-sm">
+                    <span className="font-medium">{checkout.cadet_name}</span>
+                    <span className="text-muted-foreground"> × {checkout.quantity}</span>
+                    <span className="text-xs text-muted-foreground ml-2">
+                      ({new Date(checkout.checkout_date).toLocaleDateString()})
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
+
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="cadetName">Cadet Name</Label>
+              <Input
+                id="cadetName"
+                placeholder="Enter cadet name..."
+                value={cadetName}
+                onChange={(e) => setCadetName(e.target.value)}
+                className="mt-2"
+                disabled={isLoading || availableQuantity === 0}
+                maxLength={100}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="quantity">Quantity</Label>
+              <Input
+                id="quantity"
+                type="number"
+                min="1"
+                max={availableQuantity}
+                placeholder="Enter quantity..."
+                value={quantity}
+                onChange={(e) => setQuantity(Math.max(1, Math.min(availableQuantity, parseInt(e.target.value) || 1)))}
+                className="mt-2"
+                disabled={isLoading || availableQuantity === 0}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Max available: {availableQuantity}
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <Button
+                onClick={handleCheckout}
+                disabled={isLoading || !cadetName.trim() || availableQuantity === 0 || quantity < 1}
+                className="flex-1"
+                variant="default"
+              >
+                <XCircle className="mr-2" size={16} />
+                Check Out
+              </Button>
+              <Button
+                onClick={() => onOpenChange(false)}
+                disabled={isLoading}
+                variant="outline"
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
