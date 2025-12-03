@@ -1,22 +1,24 @@
 import { useState } from 'react';
-import { CheckCircle, XCircle } from 'lucide-react';
+import { XCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Item } from '@/types/logistics';
 
 interface CheckoutDialogProps {
   item: Item | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCheckout: (cadetName: string, quantity: number) => Promise<void>;
-  activeCheckouts?: Array<{ id: string; cadet_name: string; quantity: number; checkout_date: string }>;
+  onCheckout: (cadetName: string, quantity: number, notes?: string) => Promise<void>;
+  activeCheckouts?: Array<{ id: string; cadet_name: string; quantity: number; checkout_date: string; notes?: string | null }>;
 }
 
 export function CheckoutDialog({ item, open, onOpenChange, onCheckout, activeCheckouts = [] }: CheckoutDialogProps) {
   const [cadetName, setCadetName] = useState('');
   const [quantity, setQuantity] = useState(1);
+  const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   if (!item) return null;
@@ -29,9 +31,10 @@ export function CheckoutDialog({ item, open, onOpenChange, onCheckout, activeChe
     
     setIsLoading(true);
     try {
-      await onCheckout(cadetName, quantity);
+      await onCheckout(cadetName, quantity, notes.trim() || undefined);
       setCadetName('');
       setQuantity(1);
+      setNotes('');
       onOpenChange(false);
     } finally {
       setIsLoading(false);
@@ -103,6 +106,23 @@ export function CheckoutDialog({ item, open, onOpenChange, onCheckout, activeChe
               />
               <p className="text-xs text-muted-foreground mt-1">
                 Max available: {availableQuantity}
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor="notes">Notes (optional)</Label>
+              <Textarea
+                id="notes"
+                placeholder="Add any notes about this checkout..."
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                className="mt-2"
+                disabled={isLoading || availableQuantity === 0}
+                maxLength={500}
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {notes.length}/500 characters
               </p>
             </div>
 

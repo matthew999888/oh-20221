@@ -37,7 +37,7 @@ export default function Index() {
   const [showCheckinDialog, setShowCheckinDialog] = useState(false);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
-  const [activeCheckouts, setActiveCheckouts] = useState<Array<{ id: string; cadet_name: string; quantity: number; checkout_date: string }>>([]);
+  const [activeCheckouts, setActiveCheckouts] = useState<Array<{ id: string; cadet_name: string; quantity: number; checkout_date: string; notes?: string | null }>>([]);
   const [activityLog, setActivityLog] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -161,21 +161,19 @@ export default function Index() {
     }
 
     const formData = new FormData(e.currentTarget);
-    const rawData = {
-      cadetName: formData.get('cadetName') as string,
-      dueDate: formData.get('dueDate') as string,
-    };
+    const cadetName = (formData.get('cadetName') as string)?.trim();
+
+    if (!cadetName) {
+      toast.error('Cadet name is required');
+      return;
+    }
 
     try {
-      // Validate input data
-      const validatedData = checkoutSchema.parse(rawData);
-
       const { error } = await supabase
         .from('items')
         .update({
           in_use: selectedItem.in_use + 1,
-          assigned_to: validatedData.cadetName,
-          due_date: validatedData.dueDate
+          assigned_to: cadetName
         })
         .eq('id', selectedItem.id);
 
@@ -284,7 +282,7 @@ export default function Index() {
     }
   };
 
-  const handleNewCheckout = async (cadetName: string, quantity: number) => {
+  const handleNewCheckout = async (cadetName: string, quantity: number, notes?: string) => {
     if (!selectedItem || !user) return;
 
     try {
@@ -310,7 +308,8 @@ export default function Index() {
         item_name: selectedItem.name,
         quantity: quantity,
         status: 'out',
-        created_by: user.id
+        created_by: user.id,
+        notes: notes || null
       });
 
       // Update item's in_use count
@@ -375,7 +374,7 @@ export default function Index() {
     // Fetch active checkouts
     const { data: checkouts } = await supabase
       .from('checkout_log')
-      .select('id, cadet_name, quantity, checkout_date')
+      .select('id, cadet_name, quantity, checkout_date, notes')
       .eq('item_id', item.id)
       .eq('status', 'out')
       .order('checkout_date', { ascending: false });
@@ -390,7 +389,7 @@ export default function Index() {
     // Fetch active checkouts
     const { data: checkouts } = await supabase
       .from('checkout_log')
-      .select('id, cadet_name, quantity, checkout_date')
+      .select('id, cadet_name, quantity, checkout_date, notes')
       .eq('item_id', item.id)
       .eq('status', 'out')
       .order('checkout_date', { ascending: false });

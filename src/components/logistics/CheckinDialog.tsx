@@ -9,7 +9,7 @@ interface CheckinDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCheckin: (checkoutId: string) => Promise<void>;
-  activeCheckouts: Array<{ id: string; cadet_name: string; quantity: number; checkout_date: string }>;
+  activeCheckouts: Array<{ id: string; cadet_name: string; quantity: number; checkout_date: string; notes?: string | null }>;
 }
 
 export function CheckinDialog({ item, open, onOpenChange, onCheckin, activeCheckouts }: CheckinDialogProps) {
@@ -69,6 +69,11 @@ export function CheckinDialog({ item, open, onOpenChange, onCheckin, activeCheck
                       <p className="text-sm text-muted-foreground">
                         Quantity: {checkout.quantity}
                       </p>
+                      {checkout.notes && (
+                        <p className="text-xs text-muted-foreground italic mt-1 border-l-2 border-muted pl-2">
+                          {checkout.notes}
+                        </p>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       {new Date(checkout.checkout_date).toLocaleDateString()}

@@ -67,6 +67,7 @@ export interface CheckoutLog {
   status: string;
   created_by?: string | null;
   created_at: string;
+  notes?: string | null;
 }
 
 export interface InventoryChange {
