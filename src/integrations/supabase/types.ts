@@ -89,6 +89,7 @@ export type Database = {
           id: string
           item_id: string | null
           item_name: string
+          notes: string | null
           quantity: number
           status: string
         }
@@ -101,6 +102,7 @@ export type Database = {
           id?: string
           item_id?: string | null
           item_name: string
+          notes?: string | null
           quantity?: number
           status?: string
         }
@@ -113,6 +115,7 @@ export type Database = {
           id?: string
           item_id?: string | null
           item_name?: string
+          notes?: string | null
           quantity?: number
           status?: string
         }

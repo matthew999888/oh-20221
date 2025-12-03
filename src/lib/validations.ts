@@ -13,7 +13,8 @@ export const itemSchema = z.object({
 
 export const checkoutSchema = z.object({
   cadetName: z.string().trim().min(1, "Cadet name is required").max(100, "Name must be less than 100 characters"),
-  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
+  quantity: z.number().int().min(1, "Quantity must be at least 1"),
+  notes: z.string().max(500, "Notes must be less than 500 characters").optional(),
 });
 
 export type ItemInput = z.infer<typeof itemSchema>;

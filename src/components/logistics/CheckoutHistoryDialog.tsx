@@ -101,6 +101,11 @@ export function CheckoutHistoryDialog({ itemId, itemName, open, onOpenChange }: 
                         Checked in: {new Date(log.checkin_date).toLocaleString()}
                       </p>
                     )}
+                    {log.notes && (
+                      <p className="mt-2 text-sm text-foreground/80 italic border-l-2 border-muted pl-2">
+                        {log.notes}
+                      </p>
+                    )}
                   </div>
                 </div>
               ))}
