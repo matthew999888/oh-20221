@@ -4,7 +4,7 @@ import { Package, Users, AlertCircle, Plus, Search, Trash2, Settings, History, L
 import { Item, ActivityLog } from '@/types/logistics';
 import { categories } from '@/data/categories';
 import { userRoles } from '@/data/userRoles';
-import { itemSchema, checkoutSchema } from '@/lib/validations';
+import { itemSchema } from '@/lib/validations';
 import { Navigation } from '@/components/logistics/Navigation';
 import { StatsCard } from '@/components/logistics/StatsCard';
 import { CategoryCard } from '@/components/logistics/CategoryCard';
@@ -19,7 +19,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { supabase } from '@/integrations/supabase/client';
+import { localItems, localActivityLog, localCheckoutLog, localInventoryChanges, seedDemoData } from '@/lib/localData';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 
@@ -46,19 +46,16 @@ export default function Index() {
       navigate('/auth');
       return;
     }
+    // Seed demo data if needed
+    seedDemoData();
     fetchItems();
     fetchActivityLog();
   }, [user, navigate]);
 
-  const fetchItems = async () => {
+  const fetchItems = () => {
     try {
-      const { data, error } = await supabase
-        .from('items')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setItems(data || []);
+      const data = localItems.getAll();
+      setItems(data);
     } catch (error: any) {
       toast.error('Error loading items: ' + error.message);
     } finally {
@@ -66,40 +63,29 @@ export default function Index() {
     }
   };
 
-  const fetchActivityLog = async () => {
+  const fetchActivityLog = () => {
     try {
-      const { data, error } = await supabase
-        .from('activity_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) throw error;
-      setActivityLog(data || []);
+      const data = localActivityLog.getRecent(50);
+      setActivityLog(data);
     } catch (error: any) {
       console.error('Error loading activity log:', error.message);
     }
   };
 
-  const addActivity = async (action: string, itemName: string, itemId?: string) => {
+  const addActivity = (action: string, itemName: string, itemId?: string) => {
     if (!user) return;
-
-    try {
-      await supabase.from('activity_logs').insert({
-        user_id: user.id,
-        user_name: user.email || 'Unknown',
-        action,
-        item_name: itemName,
-        item_id: itemId || null
-      });
-
-      fetchActivityLog();
-    } catch (error: any) {
-      console.error('Error logging activity:', error.message);
-    }
+    
+    localActivityLog.add({
+      user_id: user.id,
+      user_name: user.name || 'Admin',
+      action,
+      item_name: itemName,
+      item_id: itemId || null
+    });
+    fetchActivityLog();
   };
 
-  const handleAddItem = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleAddItem = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!user) return;
 
@@ -114,10 +100,9 @@ export default function Index() {
     };
 
     try {
-      // Validate input data
       const validatedData = itemSchema.parse(rawData);
       
-      const newItem = {
+      const newItem = localItems.add({
         category: validatedData.category,
         name: validatedData.name,
         quantity: validatedData.quantity,
@@ -125,22 +110,13 @@ export default function Index() {
         location: validatedData.location,
         notes: validatedData.notes || '',
         in_use: 0,
-        assigned_to: null,
-        created_by: user.id
-      };
-
-      const { data, error } = await supabase
-        .from('items')
-        .insert(newItem)
-        .select()
-        .single();
-
-      if (error) throw error;
+        assigned_to: null
+      });
 
       toast.success('Item added successfully!');
       setShowAddModal(false);
       fetchItems();
-      addActivity('Added item', newItem.name, data.id);
+      addActivity('Added item', newItem.name, newItem.id);
     } catch (error: any) {
       if (error.name === 'ZodError') {
         toast.error(error.errors[0].message);
@@ -150,11 +126,10 @@ export default function Index() {
     }
   };
 
-  const handleCheckout = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleCheckout = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedItem) return;
 
-    // Check permission
     if (!canCheckout) {
       toast.error('You do not have permission to check out items');
       return;
@@ -169,18 +144,10 @@ export default function Index() {
     }
 
     try {
-      const { error } = await supabase
-        .from('items')
-        .update({
-          in_use: selectedItem.in_use + 1,
-          assigned_to: cadetName
-        })
-        .eq('id', selectedItem.id);
-
-      if (error) {
-        toast.error('Permission denied or error: ' + error.message);
-        return;
-      }
+      localItems.update(selectedItem.id, {
+        in_use: selectedItem.in_use + 1,
+        assigned_to: cadetName
+      });
 
       toast.success('Item checked out successfully!');
       setShowCheckoutModal(false);
@@ -192,18 +159,13 @@ export default function Index() {
     }
   };
 
-  const handleCheckin = async (item: Item) => {
+  const handleCheckin = (item: Item) => {
     try {
-      const { error } = await supabase
-        .from('items')
-        .update({
-          in_use: Math.max(0, item.in_use - 1),
-          assigned_to: null,
-          due_date: null
-        })
-        .eq('id', item.id);
-
-      if (error) throw error;
+      localItems.update(item.id, {
+        in_use: Math.max(0, item.in_use - 1),
+        assigned_to: null,
+        due_date: null
+      });
 
       toast.success('Item checked in successfully!');
       fetchItems();
@@ -213,8 +175,7 @@ export default function Index() {
     }
   };
 
-  const handleDeleteItem = async (item: Item) => {
-    // Check permission first
+  const handleDeleteItem = (item: Item) => {
     if (!canDelete) {
       toast.error('You do not have permission to delete items');
       return;
@@ -225,16 +186,7 @@ export default function Index() {
     }
 
     try {
-      const { error } = await supabase
-        .from('items')
-        .delete()
-        .eq('id', item.id);
-
-      if (error) {
-        toast.error('Permission denied or error: ' + error.message);
-        return;
-      }
-
+      localItems.delete(item.id);
       toast.success('Item deleted successfully!');
       fetchItems();
       addActivity('Deleted item', item.name, item.id);
@@ -243,35 +195,20 @@ export default function Index() {
     }
   };
 
-  const handleUpdateQuantity = async (item: Item, newQuantity: number) => {
+  const handleUpdateQuantity = async (item: Item, newQuantity: number): Promise<void> => {
     if (!user) return;
 
     try {
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('name')
-        .eq('id', user.id)
-        .single();
-
-      const userName = profileData?.name || user.email || 'Unknown';
-
-      // Log the change
-      await supabase.from('inventory_changes').insert({
+      localInventoryChanges.add({
         item_id: item.id,
         item_name: item.name,
         old_quantity: item.quantity,
         new_quantity: newQuantity,
         changed_by: user.id,
-        changed_by_name: userName
+        changed_by_name: user.name || 'Admin'
       });
 
-      // Update the item
-      const { error } = await supabase
-        .from('items')
-        .update({ quantity: newQuantity })
-        .eq('id', item.id);
-
-      if (error) throw error;
+      localItems.update(item.id, { quantity: newQuantity });
 
       toast.success('Quantity updated successfully!');
       fetchItems();
@@ -282,18 +219,12 @@ export default function Index() {
     }
   };
 
-  const handleNewCheckout = async (cadetName: string, quantity: number, notes?: string) => {
+  const handleNewCheckout = async (cadetName: string, quantity: number, notes?: string): Promise<void> => {
     if (!selectedItem || !user) return;
 
     try {
-      // Calculate current checkouts
-      const { data: currentCheckouts } = await supabase
-        .from('checkout_log')
-        .select('quantity')
-        .eq('item_id', selectedItem.id)
-        .eq('status', 'out');
-
-      const totalCheckedOut = currentCheckouts?.reduce((sum, c) => sum + c.quantity, 0) || 0;
+      const currentCheckouts = localCheckoutLog.getActiveByItemId(selectedItem.id);
+      const totalCheckedOut = currentCheckouts.reduce((sum, c) => sum + c.quantity, 0);
       const available = selectedItem.quantity - totalCheckedOut;
 
       if (quantity > available) {
@@ -301,24 +232,20 @@ export default function Index() {
         return;
       }
 
-      // Log checkout
-      await supabase.from('checkout_log').insert({
+      localCheckoutLog.add({
         cadet_name: cadetName,
         item_id: selectedItem.id,
         item_name: selectedItem.name,
         quantity: quantity,
+        checkout_date: new Date().toISOString(),
         status: 'out',
         created_by: user.id,
         notes: notes || null
       });
 
-      // Update item's in_use count
-      await supabase
-        .from('items')
-        .update({
-          in_use: totalCheckedOut + quantity
-        })
-        .eq('id', selectedItem.id);
+      localItems.update(selectedItem.id, {
+        in_use: totalCheckedOut + quantity
+      });
 
       toast.success(`Checked out ${quantity}x ${selectedItem.name} to ${cadetName}`);
       fetchItems();
@@ -329,35 +256,24 @@ export default function Index() {
     }
   };
 
-  const handleNewCheckin = async (checkoutId: string) => {
+  const handleNewCheckin = async (checkoutId: string): Promise<void> => {
     if (!selectedItem || !user) return;
 
     try {
-      // Get the checkout record
-      const { data: checkout, error: fetchError } = await supabase
-        .from('checkout_log')
-        .select('quantity')
-        .eq('id', checkoutId)
-        .single();
+      const checkout = localCheckoutLog.getById(checkoutId);
+      if (!checkout) {
+        toast.error('Checkout record not found');
+        return;
+      }
 
-      if (fetchError) throw fetchError;
+      localCheckoutLog.update(checkoutId, {
+        checkin_date: new Date().toISOString(),
+        status: 'returned'
+      });
 
-      // Update checkout log
-      await supabase
-        .from('checkout_log')
-        .update({
-          checkin_date: new Date().toISOString(),
-          status: 'returned'
-        })
-        .eq('id', checkoutId);
-
-      // Update item's in_use count
-      await supabase
-        .from('items')
-        .update({
-          in_use: Math.max(0, selectedItem.in_use - checkout.quantity)
-        })
-        .eq('id', selectedItem.id);
+      localItems.update(selectedItem.id, {
+        in_use: Math.max(0, selectedItem.in_use - checkout.quantity)
+      });
 
       toast.success(`Checked in ${checkout.quantity}x ${selectedItem.name}`);
       fetchItems();
@@ -368,33 +284,31 @@ export default function Index() {
     }
   };
 
-  const handleCheckoutButtonClick = async (item: Item) => {
+  const handleCheckoutButtonClick = (item: Item) => {
     setSelectedItem(item);
     
-    // Fetch active checkouts
-    const { data: checkouts } = await supabase
-      .from('checkout_log')
-      .select('id, cadet_name, quantity, checkout_date, notes')
-      .eq('item_id', item.id)
-      .eq('status', 'out')
-      .order('checkout_date', { ascending: false });
-    
-    setActiveCheckouts(checkouts || []);
+    const checkouts = localCheckoutLog.getActiveByItemId(item.id);
+    setActiveCheckouts(checkouts.map(c => ({
+      id: c.id,
+      cadet_name: c.cadet_name,
+      quantity: c.quantity,
+      checkout_date: c.checkout_date,
+      notes: c.notes
+    })));
     setShowCheckoutDialog(true);
   };
 
-  const handleCheckinButtonClick = async (item: Item) => {
+  const handleCheckinButtonClick = (item: Item) => {
     setSelectedItem(item);
     
-    // Fetch active checkouts
-    const { data: checkouts } = await supabase
-      .from('checkout_log')
-      .select('id, cadet_name, quantity, checkout_date, notes')
-      .eq('item_id', item.id)
-      .eq('status', 'out')
-      .order('checkout_date', { ascending: false });
-    
-    setActiveCheckouts(checkouts || []);
+    const checkouts = localCheckoutLog.getActiveByItemId(item.id);
+    setActiveCheckouts(checkouts.map(c => ({
+      id: c.id,
+      cadet_name: c.cadet_name,
+      quantity: c.quantity,
+      checkout_date: c.checkout_date,
+      notes: c.notes
+    })));
     setShowCheckinDialog(true);
   };
 
@@ -425,7 +339,7 @@ export default function Index() {
   };
 
   const stats = getStats();
-  const currentUserRole = userRole || 'cadet';
+  const currentUserRole = userRole || 'admin';
   const canEdit = userRoles[currentUserRole]?.canEdit || false;
   const canDelete = userRoles[currentUserRole]?.canDelete || false;
   const canCheckout = userRoles[currentUserRole]?.canCheckout || false;
@@ -445,8 +359,8 @@ export default function Index() {
         currentPage={currentPage}
         setCurrentPage={setCurrentPage}
         setSelectedCategory={setSelectedCategory}
-        userName={user?.email || 'User'}
-        userRole={userRoles[currentUserRole]?.name || 'User'}
+        userName={user?.name || 'Admin'}
+        userRole={userRoles[currentUserRole]?.name || 'Admin'}
         onLogout={signOut}
         canManageUsers={canManageUsers}
       />
@@ -799,6 +713,9 @@ export default function Index() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <p className="text-sm text-muted-foreground">
             AFJROTC Logistics Management System • Aim High • Fly-Fight-Win
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Local Storage Mode - Data stored in browser
           </p>
         </div>
       </footer>
