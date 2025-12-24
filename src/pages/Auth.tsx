@@ -1,54 +1,32 @@
 import { useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Mail, Lock, User } from 'lucide-react';
+import { Lock } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function Auth() {
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { signIn } = useAuth();
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/`,
-            data: {
-              name: name
-            }
-          }
-        });
-
-        if (error) throw error;
-
-        toast.success('Account created! You can now sign in.');
-        setIsSignUp(false);
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password
-        });
-
-        if (error) throw error;
-
+      const success = signIn(password);
+      if (success) {
         toast.success('Signed in successfully!');
         navigate('/');
+      } else {
+        toast.error('Invalid password');
       }
     } catch (error: any) {
-      toast.error(error.message || 'Authentication error');
+      toast.error('Authentication error');
     } finally {
       setLoading(false);
     }
@@ -64,42 +42,8 @@ export default function Auth() {
         </div>
 
         <form onSubmit={handleAuth} className="space-y-4">
-          {isSignUp && (
-            <div>
-              <Label htmlFor="name" className="text-foreground">Full Name</Label>
-              <div className="relative mt-1">
-                <User className="absolute left-3 top-3 text-muted-foreground" size={20} />
-                <Input
-                  id="name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Your full name"
-                  required
-                  className="pl-10"
-                />
-              </div>
-            </div>
-          )}
-
           <div>
-            <Label htmlFor="email" className="text-foreground">Email Address</Label>
-            <div className="relative mt-1">
-              <Mail className="absolute left-3 top-3 text-muted-foreground" size={20} />
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your.email@school.edu"
-                required
-                className="pl-10"
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="password" className="text-foreground">Password</Label>
+            <Label htmlFor="password" className="text-foreground">Admin Password</Label>
             <div className="relative mt-1">
               <Lock className="absolute left-3 top-3 text-muted-foreground" size={20} />
               <Input
@@ -109,7 +53,6 @@ export default function Auth() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                minLength={6}
                 className="pl-10"
               />
             </div>
@@ -120,24 +63,16 @@ export default function Auth() {
             disabled={loading}
             className="w-full"
           >
-            {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Sign In'}
+            {loading ? 'Signing in...' : 'Sign In'}
           </Button>
         </form>
 
         <div className="mt-6 pt-6 border-t border-border">
-          <button
-            onClick={() => setIsSignUp(!isSignUp)}
-            className="w-full text-sm text-primary hover:underline"
-          >
-            {isSignUp
-              ? 'Already have an account? Sign In'
-              : "Don't have an account? Sign Up"}
-          </button>
-        </div>
-
-        <div className="mt-4 text-xs text-muted-foreground text-center">
-          <p>Demo accounts: instructor@school.edu, logistics@school.edu, cadet@school.edu</p>
-          <p className="mt-1">Password: any password (6+ characters)</p>
+          <div className="text-sm text-muted-foreground text-center">
+            <p className="font-medium text-foreground mb-2">Default Password: admin123</p>
+            <p>This is a simplified version without cloud backend.</p>
+            <p className="mt-1">All data is stored locally in your browser.</p>
+          </div>
         </div>
       </div>
     </div>

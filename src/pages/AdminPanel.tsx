@@ -8,26 +8,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { supabase } from '@/integrations/supabase/client';
+import { localUsers, LocalUser } from '@/lib/localData';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-
-interface UserWithRole {
-  id: string;
-  email: string;
-  name: string;
-  role: 'admin' | 'lead' | 'staff' | 'member' | 'logistics' | 'cadet';
-  created_at: string;
-}
 
 export default function AdminPanel() {
   const { user, userRole, signOut } = useAuth();
   const navigate = useNavigate();
-  const [users, setUsers] = useState<UserWithRole[]>([]);
+  const [users, setUsers] = useState<LocalUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'lead' | 'staff' | 'member' | 'logistics' | 'cadet'>('all');
-  const [selectedUser, setSelectedUser] = useState<UserWithRole | null>(null);
+  const [selectedUser, setSelectedUser] = useState<LocalUser | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
 
   useEffect(() => {
@@ -43,39 +35,11 @@ export default function AdminPanel() {
     }
   }, [userRole, navigate]);
 
-  const fetchUsers = async () => {
+  const fetchUsers = () => {
     setLoading(true);
     try {
-      // Fetch profiles first
-      const { data: profilesData, error: profilesError } = await supabase
-        .from('profiles')
-        .select('id, email, name, created_at')
-        .order('created_at', { ascending: false });
-
-      if (profilesError) throw profilesError;
-
-      // Fetch all user roles
-      const { data: rolesData, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('user_id, role');
-
-      if (rolesError) throw rolesError;
-
-      // Create a map of user_id to role for quick lookup
-      const roleMap = new Map(
-        rolesData?.map(r => [r.user_id, r.role]) || []
-      );
-
-      // Combine the data
-      const usersWithRoles = profilesData?.map(user => ({
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        created_at: user.created_at,
-        role: roleMap.get(user.id) || 'cadet'
-      })) || [];
-
-      setUsers(usersWithRoles);
+      const data = localUsers.getAll();
+      setUsers(data);
     } catch (error: any) {
       toast.error('Error loading users: ' + error.message);
     } finally {
@@ -83,15 +47,9 @@ export default function AdminPanel() {
     }
   };
 
-  const handleRoleChange = async (userId: string, newRole: 'admin' | 'lead' | 'staff' | 'member' | 'logistics' | 'cadet') => {
+  const handleRoleChange = (userId: string, newRole: 'admin' | 'lead' | 'staff' | 'member' | 'logistics' | 'cadet') => {
     try {
-      const { error } = await supabase
-        .from('user_roles')
-        .update({ role: newRole })
-        .eq('user_id', userId);
-
-      if (error) throw error;
-
+      localUsers.updateRole(userId, newRole);
       toast.success('Role updated successfully!');
       fetchUsers();
       setShowEditModal(false);
@@ -269,7 +227,7 @@ export default function AdminPanel() {
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>User Management</CardTitle>
-            <CardDescription>Search and filter users to manage their roles</CardDescription>
+            <CardDescription>Search and filter users to manage their roles (Local storage mode - limited functionality)</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex flex-col md:flex-row gap-4">
@@ -313,28 +271,28 @@ export default function AdminPanel() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {filteredUsers.map((user) => (
+              {filteredUsers.map((u) => (
                 <div
-                  key={user.id}
+                  key={u.id}
                   className="flex items-center justify-between p-4 bg-accent/30 rounded-lg border border-border hover:bg-accent/50 transition-colors"
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-1">
-                      <p className="font-semibold text-foreground">{user.name}</p>
-                      <Badge variant={getRoleBadgeVariant(user.role)} className="flex items-center gap-1">
-                        {getRoleIcon(user.role)}
-                        {getRoleLabel(user.role)}
+                      <p className="font-semibold text-foreground">{u.name}</p>
+                      <Badge variant={getRoleBadgeVariant(u.role)} className="flex items-center gap-1">
+                        {getRoleIcon(u.role)}
+                        {getRoleLabel(u.role)}
                       </Badge>
                     </div>
-                    <p className="text-sm text-muted-foreground">{user.email}</p>
+                    <p className="text-sm text-muted-foreground">{u.email}</p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Registered: {new Date(user.created_at).toLocaleDateString()}
+                      Registered: {new Date(u.created_at).toLocaleDateString()}
                     </p>
                   </div>
                   <Button
                     variant="outline"
                     onClick={() => {
-                      setSelectedUser(user);
+                      setSelectedUser(u);
                       setShowEditModal(true);
                     }}
                     className="flex items-center gap-2"
@@ -441,7 +399,7 @@ export default function AdminPanel() {
               </div>
               <div className="bg-accent/50 p-3 rounded-lg border border-border">
                 <p className="text-sm text-muted-foreground">
-                  <strong>Note:</strong> Changes take effect immediately and will update the user's permissions across the system.
+                  <strong>Note:</strong> Changes take effect immediately and are stored locally.
                 </p>
               </div>
             </div>

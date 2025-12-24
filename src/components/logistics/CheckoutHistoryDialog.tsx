@@ -3,7 +3,7 @@ import { History, CheckCircle, XCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { supabase } from '@/integrations/supabase/client';
+import { localCheckoutLog } from '@/lib/localData';
 import { CheckoutLog } from '@/types/logistics';
 
 interface CheckoutHistoryDialogProps {
@@ -23,20 +23,17 @@ export function CheckoutHistoryDialog({ itemId, itemName, open, onOpenChange }: 
     }
   }, [open, itemId]);
 
-  const fetchHistory = async () => {
+  const fetchHistory = () => {
     if (!itemId) return;
     
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('checkout_log')
-        .select('*')
-        .eq('item_id', itemId)
-        .order('checkout_date', { ascending: false })
-        .limit(20);
-
-      if (error) throw error;
-      setHistory(data || []);
+      const logs = localCheckoutLog.getByItemId(itemId);
+      // Sort by checkout_date descending and limit to 20
+      const sorted = logs
+        .sort((a, b) => new Date(b.checkout_date).getTime() - new Date(a.checkout_date).getTime())
+        .slice(0, 20);
+      setHistory(sorted);
     } catch (error) {
       console.error('Error fetching checkout history:', error);
     } finally {

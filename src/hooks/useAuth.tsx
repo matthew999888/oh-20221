@@ -1,86 +1,63 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { localAuth } from '@/lib/localData';
+
+interface LocalUser {
+  id: string;
+  email: string;
+  name: string;
+}
 
 interface AuthContextType {
-  user: User | null;
-  session: Session | null;
+  user: LocalUser | null;
   userRole: 'admin' | 'lead' | 'staff' | 'member' | 'logistics' | 'cadet' | null;
   loading: boolean;
-  signOut: () => Promise<void>;
+  signOut: () => void;
+  signIn: (password: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<LocalUser | null>(null);
   const [userRole, setUserRole] = useState<'admin' | 'lead' | 'staff' | 'member' | 'logistics' | 'cadet' | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        // Defer role fetching to avoid deadlock
-        if (session?.user) {
-          setTimeout(() => {
-            fetchUserRole(session.user.id);
-          }, 0);
-        } else {
-          setUserRole(null);
-          setLoading(false);
-        }
-      }
-    );
-
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        setTimeout(() => {
-          fetchUserRole(session.user.id);
-        }, 0);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    // Check for existing session
+    const session = localAuth.getSession();
+    if (session?.isLoggedIn) {
+      setUser({
+        id: session.userId,
+        email: 'admin@afjrotc.edu',
+        name: session.userName
+      });
+      setUserRole(session.role);
+    }
+    setLoading(false);
   }, []);
 
-  const fetchUserRole = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', userId)
-        .single();
-
-      if (error) throw error;
-      setUserRole(data?.role || null);
-    } catch (error) {
-      console.error('Error fetching user role:', error);
-      setUserRole(null);
-    } finally {
-      setLoading(false);
+  const signIn = (password: string): boolean => {
+    const success = localAuth.login(password);
+    if (success) {
+      const session = localAuth.getSession();
+      setUser({
+        id: session.userId,
+        email: 'admin@afjrotc.edu',
+        name: session.userName
+      });
+      setUserRole(session.role);
     }
+    return success;
   };
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  const signOut = () => {
+    localAuth.logout();
     setUser(null);
-    setSession(null);
     setUserRole(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, userRole, loading, signOut }}>
+    <AuthContext.Provider value={{ user, userRole, loading, signOut, signIn }}>
       {children}
     </AuthContext.Provider>
   );
